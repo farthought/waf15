@@ -1,0 +1,173 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# Thomas Nagy, 2006 (ita)
+
+# the following two variables are used by the target "waf dist"
+VERSION = '0.0.3'
+APPNAME = 'java_test'
+
+# these variables are mandatory ('/' are converted automatically)
+top = '.'
+out = 'build'
+
+def configure(conf):
+	conf.check_tool('java')
+	conf.check_java_class('java.io.FileOutputStream')
+	conf.check_java_class('FakeClass')
+
+def build(bld):
+
+	# in the following, the feature 'seq' is used to force a sequential order on the tasks created
+
+	# java
+	#
+	# srcdir: directory containing the sources to compile
+	# compat: java compatibility version number (compiling with a too recent jdk may cause problems)
+	bld(features='javac seq', srcdir='src', compat='1.5', sourcepath=['src', 'sup'])
+
+	# jar
+	#
+	# basedir: directory containing the .class files to package
+	# destfile: the destination file
+	bld(features='jar seq', basedir='src', destfile='foo.jar')
+
+	#jaropts = '-C default/src/ .', # can be used to give files
+	#classpath = '..:.', # can be used to set a custom classpath
+	#)
+
+	# -----------------------------------------------------------------------------------------------
+	# custom cache for inner classes below (experimental)
+	Task.TaskBase.classes['javac'].post_run = post_run_javac
+	Task.TaskBase.classes['javac'].can_retrieve_cache = can_retrieve_cache_javac
+
+import os, tempfile, shutil
+import Task, Options, Environment, Constants, Utils
+
+def post_run_javac(self):
+	par = {}
+	for x in self.inputs:
+		par[x.parent.id] = x.parent
+
+	inner = {}
+	for k in par.values():
+		path = k.abspath(self.env)
+		lst = os.listdir(path)
+
+		for u in lst:
+			if u.find('$') >= 0:
+				inner_class_node = k.find_or_declare(u)
+				inner[inner_class_node.id] = inner_class_node
+
+	to_add = set(inner.keys()) - set([x.id for x in self.outputs])
+	for x in to_add:
+		self.outputs.append(inner[x])
+
+	bld = self.generator.bld
+	env = self.env
+	sig = self.signature()
+	ssig = sig.encode('hex')
+
+	variant = env.variant()
+	for node in self.outputs:
+		# check if the node exists ..
+		try:
+			os.stat(node.abspath(env))
+		except OSError:
+			self.hasrun = Constants.MISSING
+			self.err_msg = '-> missing file: %r' % node.abspath(env)
+			raise Utils.WafError
+
+		# important, store the signature for the next run
+		bld.node_sigs[variant][node.id] = sig
+	bld.task_sigs[self.unique_id()] = self.cache_sig
+
+	# file caching, if possible
+	# try to avoid data corruption as much as possible
+	if not Options.cache_global or Options.options.nocache or not self.outputs:
+		return None
+
+	if getattr(self, 'cached', None):
+		return None
+
+	dname = os.path.join(Options.cache_global, ssig)
+	tmpdir = tempfile.mkdtemp(prefix=Options.cache_global + os.sep + 'waf')
+
+	try:
+		shutil.rmtree(dname)
+	except:
+		pass
+
+	doc = Environment.Environment()
+	try:
+		i = 0
+		for node in self.outputs:
+			variant = node.variant(env)
+			doc[str(i) + node.name] = node.relpath_gen(bld.srcnode)
+			dest = os.path.join(tmpdir, str(i) + node.name)
+			shutil.copy2(node.abspath(env), dest)
+			i += 1
+		doc.store(os.path.join(tmpdir, 'inner_c4che')) # store the list of files added to the cache
+	except (OSError, IOError):
+		try:
+			shutil.rmtree(tmpdir)
+		except:
+			pass
+	else:
+		try:
+			os.rename(tmpdir, dname)
+		except OSError:
+			try:
+				shutil.rmtree(tmpdir)
+			except:
+				pass
+		else:
+			try:
+				os.chmod(dname, O755)
+			except:
+				pass
+
+
+def can_retrieve_cache_javac(self):
+	if not Options.cache_global or Options.options.nocache or not self.outputs:
+		return None
+
+	env = self.env
+	sig = self.signature()
+	ssig = sig.encode('hex')
+	bld = self.generator.bld
+
+	# first try to access the cache folder for the task
+	dname = os.path.join(Options.cache_global, ssig)
+	try:
+		t1 = os.stat(dname).st_mtime
+	except OSError:
+		return None
+
+	doc = Environment.Environment()
+	doc.load(os.path.join(dname, 'inner_c4che'))
+	for x in doc.table:
+		node = bld.srcnode.find_or_declare(doc[x])
+		try:
+			shutil.copy2(os.path.join(dname, x), node.abspath(env))
+			os.utime(node.abspath(env), None)
+		except (OSError, IOError):
+			debug('task: failed retrieving file')
+			return None
+
+	# is it the same folder?
+	try:
+		t2 = os.stat(dname).st_mtime
+	except OSError:
+		return None
+
+	if t1 != t2:
+		return None
+
+	for node in self.outputs:
+		self.generator.bld.node_sigs[node.variant(env)][node.id] = sig
+		if Options.options.progress_bar < 1:
+			self.generator.bld.printout('restoring from cache %r\n' % node.bldpath(env))
+
+	self.cached = True
+	return 1
+

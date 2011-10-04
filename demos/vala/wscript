@@ -1,0 +1,45 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# Jaap Haitsma, 2008
+
+# the following two variables are used by the target "waf dist"
+VERSION = '0.0.1'
+APPNAME = 'vala-gtk-example'
+
+# these variables are mandatory ('/' are converted automatically)
+top = '.'
+out = 'build'
+
+def set_options(opt):
+	opt.tool_options('compiler_cc')
+	opt.tool_options('vala')
+
+def configure(conf):
+	conf.check_tool('compiler_cc vala')
+	conf.check_cfg(package='glib-2.0', uselib_store='GLIB', atleast_version='2.10.0', mandatory=1, args='--cflags --libs')
+	conf.check_cfg(package='gtk+-2.0', uselib_store='GTK', atleast_version='2.10.0', mandatory=1, args='--cflags --libs')
+
+def build(bld):
+	bld.add_subdirs('src')
+
+
+	#######################
+	# note: to distribute precompiled c files as in the project libdesktop-agnostic
+	# one should use something like this:
+	#
+	#import shutil
+	#import Task
+	#cls = Task.TaskBase.classes['valac']
+	#old = cls.run
+	#
+	#def run(self):
+	#	self.env.VALAC = ''
+	#	if self.env.VALAC:
+	#		return old(self)
+	#	else:
+	#		print("restoring from pre-cache")
+	#		d = bld.path.abspath()
+	#		for x in self.outputs:
+	#			shutil.copy2(d + '/novala/' + x.name, x.abspath(self.env))
+	#cls.run = run
+
