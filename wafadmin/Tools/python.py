@@ -195,6 +195,19 @@ LDVERSION = %r
 	python_LIBDIR, python_LIBPL, INCLUDEPY, Py_ENABLE_SHARED, python_MACOSX_DEPLOYMENT_TARGET,
 	python_LDVERSION))
 
+	# Allow some python overrides from env vars for cross-compiling
+	os_env = dict(os.environ)
+
+	override_python_LDFLAGS = os_env.get('python_LDFLAGS', None)
+	if override_python_LDFLAGS is not None:
+		conf.log.write("python_LDFLAGS override from environment = %r\n" % (override_python_LDFLAGS))
+		python_LDFLAGS = override_python_LDFLAGS
+
+	override_python_LIBDIR = os_env.get('python_LIBDIR', None)
+	if override_python_LIBDIR is not None:
+		conf.log.write("python_LIBDIR override from environment = %r\n" % (override_python_LIBDIR))
+		python_LIBDIR = override_python_LIBDIR
+
 	if python_MACOSX_DEPLOYMENT_TARGET:
 		conf.env['MACOSX_DEPLOYMENT_TARGET'] = python_MACOSX_DEPLOYMENT_TARGET
 		conf.environ['MACOSX_DEPLOYMENT_TARGET'] = python_MACOSX_DEPLOYMENT_TARGET
