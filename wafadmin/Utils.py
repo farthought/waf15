@@ -15,7 +15,7 @@ Utilities, the stable ones are the following:
 
 	import stat
 	def h_file(filename):
-		st = os.stat(filename)
+		st = os.lstat(filename)
 		if stat.S_ISDIR(st[stat.ST_MODE]): raise IOError('not a file')
 		m = Utils.md5()
 		m.update(str(st.st_mtime))
@@ -418,13 +418,13 @@ def pprint(col, str, label='', sep='\n'):
 
 def check_dir(dir):
 	"""If a folder doesn't exists, create it."""
-	try:
-		os.stat(dir)
-	except OSError:
+	if not os.path.isdir(path):
 		try:
-			os.makedirs(dir)
-		except OSError, e:
-			raise WafError("Cannot create folder '%s' (original error: %s)" % (dir, e))
+			os.makedirs(path)
+		except OSError as e:
+			if not os.path.isdir(path):
+				raise Errors.WafError('Cannot create the folder %r' % path, ex=e)
+
 
 def cmd_output(cmd, **kw):
 
