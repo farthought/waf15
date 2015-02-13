@@ -416,7 +416,7 @@ def pprint(col, str, label='', sep='\n'):
 	"print messages in color"
 	sys.stderr.write("%s%s%s %s%s" % (Logs.colors(col), str, Logs.colors.NORMAL, label, sep))
 
-def check_dir(dir):
+def check_dir(path):
 	"""If a folder doesn't exists, create it."""
 	if not os.path.isdir(path):
 		try:
